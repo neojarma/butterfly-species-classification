@@ -1,4 +1,6 @@
 from datetime import timedelta
+import io
+import os
 import numpy as np
 import tensorflow as tf
 from flask import Flask, request, jsonify, send_from_directory
@@ -6,11 +8,12 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import cv2
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.exc import InvalidRequestError
+import os
+from PIL import Image
 
 app = Flask(__name__)
-# Replace the MySQL dialect with pymysql
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:secretrootpassword@localhost/butterfly'
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://root:secretrootpassword@localhost/butterfly'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -19,22 +22,37 @@ app.config['JWT_SECRET_KEY'] = 'your-secret-keyetrbe4rtyrtyb678678'
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=3)
 jwt = JWTManager(app)
 
+host = 'https://growing-advanced-sculpin.ngrok-free.app'
+
 ALLOW_EXTENSION = {'jpg', 'jpeg'}
 
 # Load the Machine Learning Model
 model = tf.keras.models.load_model('trained_80_20.h5')
-class_names = ['BROOKES BIRDWING', 'ELBOWED PIERROT', 'GREAT EGGFLY', 'GREAT JAY',
-               'ORANGE TIP', 'ORCHARD SWALLOW', 'PAINTED LADY', 'PAPER KITE', 'PEACOCK', 'ULYSES']
+class_names = ['brookes-birdwing', 'elbowed-pierrot', 'great-eggfly', 'great-jay',
+               'orange-tip', 'orchard-swallow', 'painted-lady', 'paper-kite', 'peacock', 'ulyses']
 
 
 class User(db.Model):
     __tablename__ = 'users'
-    username = db.Column(db.String(80), primary_key=True)
-    full_name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(128), nullable=False)
+    username = db.Column(db.String(255), primary_key=True)
+    full_name = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password = db.Column(db.String(255), nullable=False)
     image_path = db.Column(db.String(255), nullable=False,
                            default='default_profil.jpg')
+
+
+class Observation(db.Model):
+    __tablename__ = 'observations'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    uploaded_by = db.Column(db.String(255))
+    species = db.Column(db.String(255))
+    total = db.Column(db.Integer)
+    date = db.Column(db.Date)
+    lat = db.Column(db.Float)
+    lon = db.Column(db.Float)
+    img_path = db.Column(db.String(255))
 
 
 def allow_file(filename):
@@ -42,7 +60,6 @@ def allow_file(filename):
 
 
 def read_image(img):
-    # Read the image
     image = cv2.imdecode(np.frombuffer(img, np.uint8), -1)
     # Convert BGR to RGB
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -92,7 +109,6 @@ def login():
     if not ok:
         return jsonify({'message': 'Wrong username or password'}), 401
 
-    # Create a JWT token
     access_token = create_access_token(identity=username)
     user_dict = {
         'username': user.username,
@@ -117,20 +133,62 @@ def predict():
         image = image.read()
         img = read_image(image)
         prediction = model.predict(img)
-        print(prediction)
         output_class = class_names[np.argmax(prediction)]
         percentage = 100 * np.max(prediction)
 
-        resp = jsonify({'class': output_class, 'percent': percentage})
+        preview = []
+        for i in range(1, 6):
+            path = host + '/images'+'/butterflies/' + \
+                output_class+'/'+str(i)+'.jpg'
+            preview.append(path)
+
+        resp = jsonify(
+            {'class': output_class, 'percent': percentage, 'images': preview})
         return resp
 
 
-@app.route("/protected", methods=["GET"])
+def saveImage(img_bytes, current_user, fileName):
+    img = Image.open(io.BytesIO(img_bytes))
+
+    file_path = os.path.join('images', 'observations', current_user)
+    if not os.path.exists(file_path):
+        os.makedirs(file_path)
+
+    file_path = os.path.join(file_path, fileName)
+    img.save(file_path)
+
+
+@app.route("/observations", methods=["POST"])
 @jwt_required()
 def protected():
-    # Access the identity of the current user with get_jwt_identity
     current_user = get_jwt_identity()
-    return jsonify(logged_in_as=current_user), 200
+
+    # Ensure that required fields are present in the request
+    if 'species' not in request.form or 'total' not in request.form or 'date' not in request.form \
+            or 'lat' not in request.form or 'lon' not in request.form or 'image' not in request.files:
+        return jsonify({'error': 'Missing required data in the request'}), 400
+
+    data = request.form
+    uploaded_by = current_user
+    species = data['species']
+    total = int(data['total'])
+    date = data['date']
+    lat = float(data['lat'])
+    lon = float(data['lon'])
+    obsrv_image = request.files['image']
+
+    fileName = obsrv_image.filename
+    fullPath = saveImage(obsrv_image.read(), current_user, fileName)
+
+    try:
+        new_obs = Observation(uploaded_by=uploaded_by, species=species,
+                              total=total, date=date, lat=lat, lon=lon, img_path=fullPath)
+        db.session.add(new_obs)
+        db.session.commit()
+        return jsonify({'message': 'success'})
+    except InvalidRequestError as e:
+        error_message = str(e)
+        return jsonify({'message': 'failed insert data', 'error': error_message}), 500
 
 
 if __name__ == '__main__':
