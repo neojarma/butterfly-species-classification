@@ -11,6 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import InvalidRequestError
 import os
 from PIL import Image
+from sqlalchemy import ForeignKey, extract, or_
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:secretrootpassword@localhost/butterfly'
@@ -53,6 +54,82 @@ class Observation(db.Model):
     lat = db.Column(db.Float)
     lon = db.Column(db.Float)
     img_path = db.Column(db.String(255))
+
+
+# get filter
+@app.route('/species', methods=['GET'])
+def allSpecies():
+    return jsonify({'species': class_names})
+
+
+@app.route('/observations', methods=['GET'])
+def geographics():
+    # Get the filter values from the query parameters
+    species_filter = request.args.get('species')
+    year_filter = request.args.get('year')
+    month_filter = request.args.get('month')
+
+    # Start building the base query
+    query = Observation.query
+    # Join with the User table to get full_name based on username
+    query = query.join(User, User.username == Observation.uploaded_by)
+
+    # Apply species filter if provided
+    if species_filter:
+        species_values = species_filter.split(',')
+        query = query.filter(Observation.species.in_(species_values))
+
+    # Apply year filter if provided
+    if year_filter:
+        query = query.filter(
+            extract('year', Observation.date) == int(year_filter))
+
+    # Apply month filter if provided
+    if month_filter:
+        query = query.filter(
+            extract('month', Observation.date) == int(month_filter))
+    query = query.with_entities(
+        Observation.id,
+        Observation.uploaded_by,
+        User.full_name.label('full_name'),  # Alias for clarity
+        Observation.species,
+        Observation.total,
+        Observation.date,
+        Observation.lat,
+        Observation.lon,
+        Observation.img_path
+    )
+    # Execute the query and fetch the results
+    observations = query.all()
+
+    # Convert the results to a list of dictionaries
+    observations_list = []
+    for observation in observations:
+        observation_dict = {
+            'id': observation.id,
+            'uploaded_by': observation.uploaded_by,
+            'full_name': observation.full_name,
+            'species': observation.species,
+            'total': observation.total,
+            'date': observation.date.strftime('%Y-%m-%d'),
+            'lat': observation.lat,
+            'lon': observation.lon,
+            'observed_image': host+observation.img_path,
+            'images_reference': genImagesPrev(observation.species),
+        }
+        observations_list.append(observation_dict)
+
+    # Return the results as JSON
+    return jsonify({'observations': observations_list})
+
+
+def genImagesPrev(species):
+    preview = []
+    for i in range(1, 6):
+        path = host + '/images'+'/butterflies/' + \
+            str(species) + '/'+str(i)+'.jpg'
+        preview.append(path)
+    return preview
 
 
 def allow_file(filename):
