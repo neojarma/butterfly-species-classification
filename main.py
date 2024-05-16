@@ -28,7 +28,7 @@ host = 'https://growing-advanced-sculpin.ngrok-free.app'
 ALLOW_EXTENSION = {'jpg', 'jpeg'}
 
 # Load the Machine Learning Model
-model = tf.keras.models.load_model('trained_80_20.h5')
+# model = tf.keras.models.load_model('trained_80_20.h5')
 class_names = ['brookes-birdwing', 'elbowed-pierrot', 'great-eggfly', 'great-jay',
                'orange-tip', 'orchard-swallow', 'painted-lady', 'paper-kite', 'peacock', 'ulyses']
 
@@ -267,6 +267,84 @@ def protected():
     except InvalidRequestError as e:
         error_message = str(e)
         return jsonify({'message': 'failed insert data', 'error': error_message}), 500
+
+
+@app.route('/pie-charts', methods=['GET'])
+def get_pie_charts():
+    observations = db.session.query(Observation.species, db.func.sum(
+        Observation.total).label('total_count')).group_by(Observation.species).all()
+
+    obs = []
+    total = 0
+    for x in observations:
+        obs.append({
+            'species': x[0], 'total_count': int(x[1])
+        })
+        total += int(x[1])
+
+    return jsonify({"total_observations": total, "observations": obs})
+
+
+@app.route('/charts-detail-range', methods=['POST'])
+def chart_detail_range():
+    data = request.get_json()
+    species = data.get('species')
+    start_year = data.get('start_year')
+    end_year = data.get('end_year')
+
+    query = db.session.query(
+        Observation.species,
+        db.func.YEAR(Observation.date).label('year'),
+        db.func.sum(Observation.total).label('total_count')
+    ).filter(Observation.species == species)
+
+    if start_year is not None and end_year is not None:
+        query = query.filter(db.func.YEAR(
+            Observation.date).between(start_year, end_year))
+
+    observations = query.group_by(
+        Observation.species,
+        db.func.YEAR(Observation.date)
+    ).all()
+
+    result = []
+    count = 0
+
+    for obs in observations:
+        result.append(
+            {'species': obs[0], 'year': obs[1], 'total_count': int(obs[2])})
+        count += int(obs[2])
+
+    return jsonify({"obs": result, "count": count})
+
+
+@app.route('/charts-detail', methods=['POST'])
+def chart_detail():
+    data = request.get_json()
+    species = data.get('species')
+    year = data.get('year')
+
+    observations = db.session.query(
+        Observation.species,
+        db.func.MONTH(Observation.date).label('month'),
+        db.func.sum(Observation.total).label('total_count')
+    ).filter(
+        Observation.species == species,
+        db.func.YEAR(Observation.date) == year
+    ).group_by(
+        Observation.species,
+        db.func.MONTH(Observation.date)
+    ).all()
+
+    result = []
+    count = 0
+
+    for obs in observations:
+        result.append(
+            {'species': obs[0], 'month': obs[1], 'total_count': int(obs[2])})
+        count += int(obs[2])
+
+    return jsonify({"obs": result, "count": count})
 
 
 if __name__ == '__main__':
