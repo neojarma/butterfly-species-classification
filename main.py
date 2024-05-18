@@ -324,14 +324,18 @@ def chart_detail():
     species = data.get('species')
     year = data.get('year')
 
-    observations = db.session.query(
+    query = db.session.query(
         Observation.species,
         db.func.MONTH(Observation.date).label('month'),
         db.func.sum(Observation.total).label('total_count')
     ).filter(
-        Observation.species == species,
-        db.func.YEAR(Observation.date) == year
-    ).group_by(
+        Observation.species == species
+    )
+
+    if year:
+        query = query.filter(db.func.YEAR(Observation.date) == year)
+
+    observations = query.group_by(
         Observation.species,
         db.func.MONTH(Observation.date)
     ).all()
