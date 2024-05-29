@@ -56,6 +56,24 @@ class Observation(db.Model):
     img_path = db.Column(db.String(255))
 
 
+class Butterfly(db.Model):
+    __tablename__ = 'butterflies'
+    species = db.Column(db.String(50), primary_key=True)
+    scientific_name = db.Column(db.String(100))
+    popular_name = db.Column(db.String(100))
+    description = db.Column(db.Text)
+    kingdom = db.Column(db.String(50))
+    phylum = db.Column(db.String(50))
+    class_species = db.Column(db.String(50))  # 'class' is a reserved keyword
+    order = db.Column(db.String(50))
+    family = db.Column(db.String(50))
+    genus = db.Column(db.String(50))
+    distribution = db.Column(db.Text)
+    continent = db.Column(db.String(100))
+    country = db.Column(db.String(200))
+    population_status = db.Column(db.String(50))
+
+
 # get filter
 @app.route('/species', methods=['GET'])
 def allSpecies():
@@ -349,6 +367,34 @@ def chart_detail():
         count += int(obs[2])
 
     return jsonify({"obs": result, "count": count})
+
+
+@app.route('/butterflies', methods=['GET'])
+def get_all_butterflies():
+    butterflies = Butterfly.query.all()
+
+    butterfly_list = []
+    for butterfly in butterflies:
+        butterfly_dict = {
+            'species': butterfly.species,
+            'scientific_name': butterfly.scientific_name,
+            'popular_name': butterfly.popular_name,
+            'description': butterfly.description,
+            'kingdom': butterfly.kingdom,
+            'phylum': butterfly.phylum,
+            'class': butterfly.class_species,
+            'order': butterfly.order,
+            'family': butterfly.family,
+            'genus': butterfly.genus,
+            'distribution': butterfly.distribution,
+            'continent': butterfly.continent,
+            'country': butterfly.country,
+            'population_status': butterfly.population_status,
+            'thumbnail': host + '/images'+'/butterflies/' + butterfly.species + '/1.jpg'
+        }
+        butterfly_list.append(butterfly_dict)
+
+    return jsonify({'butterflies': butterfly_list})
 
 
 if __name__ == '__main__':
