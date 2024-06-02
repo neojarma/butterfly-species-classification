@@ -25,10 +25,10 @@ jwt = JWTManager(app)
 
 host = 'https://growing-advanced-sculpin.ngrok-free.app'
 
-ALLOW_EXTENSION = {'jpg', 'jpeg'}
+ALLOW_EXTENSION = {'jpg', 'jpeg', 'png'}
 
 # Load the Machine Learning Model
-# model = tf.keras.models.load_model('trained_80_20.h5')
+model = tf.keras.models.load_model('trained_80_20.h5')
 class_names = ['brookes-birdwing', 'elbowed-pierrot', 'great-eggfly', 'great-jay',
                'orange-tip', 'orchard-swallow', 'painted-lady', 'paper-kite', 'peacock', 'ulyses']
 
@@ -395,6 +395,41 @@ def get_all_butterflies():
         butterfly_list.append(butterfly_dict)
 
     return jsonify({'butterflies': butterfly_list})
+
+
+@app.route('/profiles', methods=['PUT'])
+@jwt_required()
+def update_profile():
+    data = request.form
+    full_name = data.get('full_name')
+    email = data.get('email')
+    image = request.files.get('image')
+
+    username = get_jwt_identity()
+
+    user = User.query.filter_by(username=username).first()
+
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    user.full_name = full_name
+    user.email = email
+
+    if image and allow_file(image.filename):
+        fileName = image.filename
+        file_path = os.path.join('images', 'user', username)
+        if not os.path.exists(file_path):
+            os.makedirs(file_path)
+        image_path = os.path.join(file_path, fileName)
+        image.save(image_path)
+        user.image_path = image_path.split('user\\')[1].replace('\\', '/')
+
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Profile updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Failed to update profile', 'error': str(e)}), 500
 
 
 if __name__ == '__main__':
