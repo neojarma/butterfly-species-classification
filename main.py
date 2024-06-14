@@ -28,9 +28,9 @@ host = 'https://growing-advanced-sculpin.ngrok-free.app'
 ALLOW_EXTENSION = {'jpg', 'jpeg', 'png'}
 
 # Load the Machine Learning Model
-model = tf.keras.models.load_model('trained_80_20.h5')
-class_names = ['brookes-birdwing', 'elbowed-pierrot', 'great-eggfly', 'great-jay',
-               'orange-tip', 'orchard-swallow', 'painted-lady', 'paper-kite', 'peacock', 'ulyses']
+model = tf.keras.models.load_model('updated_dataset.h5')
+class_names = ['brookes-birdwing', 'common-hedge-blue', 'common-sailer', 'elbowed-pierrot', 'great-eggfly',
+               'great-jay', 'orange-tip', 'orchard-swallow', 'painted-lady', 'paper-kite', 'peacock', 'ulyses', 'yellow-coster']
 
 
 class User(db.Model):
