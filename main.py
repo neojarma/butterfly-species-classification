@@ -3,7 +3,7 @@ import io
 import os
 import numpy as np
 import tensorflow as tf
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import cv2
@@ -12,6 +12,8 @@ from sqlalchemy.exc import InvalidRequestError
 import os
 from PIL import Image
 from sqlalchemy import ForeignKey, extract, or_
+import subprocess
+import random
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:secretrootpassword@localhost/butterfly'
@@ -78,6 +80,49 @@ class Butterfly(db.Model):
 @app.route('/species', methods=['GET'])
 def allSpecies():
     return jsonify({'species': class_names})
+
+
+def generate_random_filename(filename):
+    random_number = random.randint(1000, 9999)
+    name, ext = os.path.splitext(filename)
+    return f"{name}_{random_number}{ext}"
+
+
+@app.route('/enhance', methods=['POST'])
+def enhance_image():
+    # Check if the post request has the file part
+    if 'image' not in request.files:
+        return jsonify({'message': 'No image part in the request'}), 400
+
+    image = request.files['image']
+    if image.filename == '':
+        return jsonify({'message': 'No selected file'}), 400
+
+    if image and allow_file(image.filename):
+        # Save the uploaded image to the local server
+        # Example filename, you might want to generate a unique name
+        filename = generate_random_filename(image.filename)
+        input_path = os.path.join('images/enhance/input/', filename)
+        image.save(input_path)
+
+        # Define output path
+        # Example filename, you might want to generate a unique name
+        output_filename = generate_random_filename(filename)
+        output_path = os.path.join('images/enhance/output/', output_filename)
+
+        # Run the enhancement command
+        command = ['./realesrgan-ncnn-vulkan.exe', '-i', input_path,
+                   '-o', output_path, '-n', 'realesrgan-x4plus']
+        subprocess.run(command, check=True)
+
+        # Generate a URL for the enhanced image
+        image_url = url_for(
+            'serve_image', filename='enhance/output/' + output_filename, _external=True)
+
+        # Return the URL to the user
+        return jsonify({'enhanced_image_url': image_url})
+
+    return jsonify({'message': 'Invalid file extension'}), 400
 
 
 @app.route('/observations', methods=['GET'])
